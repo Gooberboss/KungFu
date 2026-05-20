@@ -78,9 +78,6 @@ box-shadow:0 4px 12px rgba(0,0,0,0.3);
 <div id="movePad"><div id="stick"></div></div>
 <div id="actions">
 <div class="row">
-<button class="abtn" id="jump">⬆</button>
-</div>
-<div class="row">
 <button class="abtn" id="punch">拳</button>
 <button class="abtn" id="kick">🦶</button>
 </div>
@@ -95,10 +92,10 @@ box-shadow:0 4px 12px rgba(0,0,0,0.3);
 <div style="color:white;font-size:36px;font-weight:bold">Kung Fu Legends</div>
 <div style="color:#aaa;font-size:16px;margin:10px 0 30px">v13 — Legendary Edition</div>
 <div style="color:#ccc;font-size:14px;text-align:center;max-width:380px;line-height:1.6;margin-bottom:20px">
-Move: WASD/Arrows | Jump: Space/W/Up<br>
+Move: WASD/Arrows | Jump: Joystick Up / Space<br>
 Punch: Z/J | Kick: X/K<br>
 Uppercut: Punch while jumping<br>
-Ground Pound: Down+Kick in air<br>
+Ground Pound: Kick while falling<br>
 Dash: Double-tap direction<br>
 Energy Bolt: F/I (hold to charge)<br>
 Special: C/L (when meter full)
@@ -1395,6 +1392,7 @@ spawnWave(1);
 const pad=document.getElementById("movePad");
 const stick=document.getElementById("stick");
 let padTouchId=null; // Track specific touch for joystick
+let padJumpTriggered=false; // Prevent repeated jumps from holding up
 
 function moveStick(x,y){
 const rect=pad.getBoundingClientRect();
@@ -1405,6 +1403,16 @@ const max=rect.width*0.26;
 if(dist>max){dx=(dx/dist)*max;dy=(dy/dist)*max;}
 stick.style.transform=`translate(${dx}px,${dy}px)`;
 moveInput=dx/max;
+// Jump when pushing joystick up (only once per push)
+if(dy<-max*0.6){
+if(!padJumpTriggered && !player.jumping && gameStarted && !gameOver){
+player.vy=-18;
+player.jumping=true;
+padJumpTriggered=true;
+}
+}else{
+padJumpTriggered=false;
+}
 }
 
 function getTouchById(touches,id){
@@ -1450,6 +1458,7 @@ for(let i=0;i<e.changedTouches.length;i++){
 if(e.changedTouches[i].identifier===padTouchId){
 padTouchId=null;
 moveInput=0;
+padJumpTriggered=false;
 stick.style.transform="translate(0px,0px)";
 break;
 }
@@ -1463,6 +1472,7 @@ for(let i=0;i<e.changedTouches.length;i++){
 if(e.changedTouches[i].identifier===padTouchId){
 padTouchId=null;
 moveInput=0;
+padJumpTriggered=false;
 stick.style.transform="translate(0px,0px)";
 break;
 }
@@ -1499,11 +1509,6 @@ sfxPunch();sfxKick();
 }
 }
 
-document.getElementById("jump").addEventListener("touchstart",e=>{
-e.preventDefault();initAudio();
-if(gameOver||!gameStarted) return;
-if(!player.jumping){player.vy=-18;player.jumping=true;}
-});
 document.getElementById("punch").addEventListener("touchstart",e=>{e.preventDefault();initAudio();
 if(player.jumping) doAttack("uppercut"); else doAttack("punch");});
 document.getElementById("kick").addEventListener("touchstart",e=>{
@@ -1513,7 +1518,33 @@ else if(player.jumping) doAttack("jumpkick");
 else doAttack("kick");
 });
 document.getElementById("special").addEventListener("touchstart",e=>{e.preventDefault();initAudio();doSpecial();});
-document.getElementById("bolt").addEventListener("touchstart",e=>{e.preventDefault();initAudio();shootBolt(false);});
+
+// Bolt button: tap = normal bolt, hold = charged bolt
+let boltTouchId=null;
+let boltTouchStart=0;
+document.getElementById("bolt").addEventListener("touchstart",e=>{
+e.preventDefault();initAudio();
+boltTouchId=e.changedTouches[0].identifier;
+boltTouchStart=Date.now();
+boltCharging=true;
+boltChargeTime=0;
+});
+document.getElementById("bolt").addEventListener("touchend",e=>{
+for(let i=0;i<e.changedTouches.length;i++){
+if(e.changedTouches[i].identifier===boltTouchId){
+boltCharging=false;
+const held=Date.now()-boltTouchStart;
+const charged=boltChargeTime>=40;
+shootBolt(charged);
+boltChargeTime=0;
+boltTouchId=null;
+break;
+}
+}
+});
+document.getElementById("bolt").addEventListener("touchcancel",e=>{
+boltCharging=false;boltChargeTime=0;boltTouchId=null;
+});
 
 // Keyboard
 document.addEventListener("keydown",e=>{
