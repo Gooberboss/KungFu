@@ -1394,7 +1394,7 @@ spawnWave(1);
 // === CONTROLS ===
 const pad=document.getElementById("movePad");
 const stick=document.getElementById("stick");
-let padActive=false;
+let padTouchId=null; // Track specific touch for joystick
 
 function moveStick(x,y){
 const rect=pad.getBoundingClientRect();
@@ -1407,11 +1407,20 @@ stick.style.transform=`translate(${dx}px,${dy}px)`;
 moveInput=dx/max;
 }
 
+function getTouchById(touches,id){
+for(let i=0;i<touches.length;i++){
+if(touches[i].identifier===id) return touches[i];
+}
+return null;
+}
+
 pad.addEventListener("touchstart",e=>{
 e.preventDefault();initAudio();
-padActive=true;
-const touch=e.touches[0];
+// Use the first new touch on the pad
+const touch=e.changedTouches[0];
+padTouchId=touch.identifier;
 moveStick(touch.clientX,touch.clientY);
+// Double-tap dash detection
 const rect=pad.getBoundingClientRect();
 const cx=rect.left+rect.width/2;
 const dx=touch.clientX-cx;
@@ -1425,11 +1434,39 @@ spawnParticles(player.x-cameraX,player.y+10,"#64c8ff",8);sfxDash();
 lastTapTime=now;lastTapDir=tapDir;
 }
 });
-document.addEventListener("touchmove",e=>{if(!padActive)return;moveStick(e.touches[0].clientX,e.touches[0].clientY);});
+
+document.addEventListener("touchmove",e=>{
+if(padTouchId===null) return;
+// Find our joystick touch among all active touches
+const touch=getTouchById(e.touches,padTouchId);
+if(touch){
+moveStick(touch.clientX,touch.clientY);
+}
+});
+
 document.addEventListener("touchend",e=>{
-if(padActive){padActive=false;moveInput=0;stick.style.transform="translate(0px,0px)";}
-// Tap to restart
-if(gameOver){restartGame();}
+// Only reset joystick if OUR specific touch ended
+for(let i=0;i<e.changedTouches.length;i++){
+if(e.changedTouches[i].identifier===padTouchId){
+padTouchId=null;
+moveInput=0;
+stick.style.transform="translate(0px,0px)";
+break;
+}
+}
+// Tap to restart (only if no pad touch active)
+if(gameOver&&padTouchId===null){restartGame();}
+});
+
+document.addEventListener("touchcancel",e=>{
+for(let i=0;i<e.changedTouches.length;i++){
+if(e.changedTouches[i].identifier===padTouchId){
+padTouchId=null;
+moveInput=0;
+stick.style.transform="translate(0px,0px)";
+break;
+}
+}
 });
 
 function doAttack(type){
@@ -1471,7 +1508,9 @@ document.getElementById("punch").addEventListener("touchstart",e=>{e.preventDefa
 if(player.jumping) doAttack("uppercut"); else doAttack("punch");});
 document.getElementById("kick").addEventListener("touchstart",e=>{
 e.preventDefault();initAudio();
-if(player.jumping) doAttack("jumpkick");else doAttack("kick");
+if(player.jumping&&player.vy>0) doGroundPound();
+else if(player.jumping) doAttack("jumpkick");
+else doAttack("kick");
 });
 document.getElementById("special").addEventListener("touchstart",e=>{e.preventDefault();initAudio();doSpecial();});
 document.getElementById("bolt").addEventListener("touchstart",e=>{e.preventDefault();initAudio();shootBolt(false);});
