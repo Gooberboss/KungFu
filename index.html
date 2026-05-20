@@ -905,6 +905,34 @@ drawLimb(6,38,12,44,8,38,legThick,pantsColor);
 ctx.globalAlpha=0.4;ctx.strokeStyle="#aa8844";ctx.lineWidth=6;
 ctx.beginPath();ctx.moveTo(0,56);ctx.lineTo(0,56+20);ctx.stroke();
 ctx.globalAlpha=1;
+}else if(player.attack==="spinkick"){
+// Spinning kick - leg sweeps in a circle
+const sProg=player.attackTime>0?(22-player.attackTime)/22:0;
+const angle=sProg*Math.PI*2; // Full 360 rotation
+const legLen=55;
+const footX=Math.cos(angle)*legLen;
+const footY=30+Math.sin(angle)*legLen;
+const kneeX=Math.cos(angle)*legLen*0.5;
+const kneeY=30+Math.sin(angle)*legLen*0.5;
+// Standing leg
+drawLimb(-6,38,-8,48,-6,56,legThick,pantsColor);
+// Spinning leg
+drawLimb(6,38,kneeX,kneeY,footX,footY,legThick+2,"#e74c3c");
+ctx.fillStyle=skinColor;
+ctx.beginPath();ctx.ellipse(footX,footY,10,5,angle,0,Math.PI*2);ctx.fill();
+// Spin trail arcs
+ctx.globalAlpha=0.4;
+ctx.strokeStyle="#ff6b6b";ctx.lineWidth=4;
+for(let i=1;i<=4;i++){
+const trailAngle=angle-i*0.4;
+const tx=Math.cos(trailAngle)*legLen;
+const ty=30+Math.sin(trailAngle)*legLen;
+ctx.beginPath();ctx.arc(tx,ty,5,0,Math.PI*2);ctx.stroke();
+}
+ctx.globalAlpha=1;
+// Circular motion blur
+ctx.strokeStyle="rgba(255,100,100,0.3)";ctx.lineWidth=3;
+ctx.beginPath();ctx.arc(0,30,legLen,angle-1.5,angle);ctx.stroke();
 }else{
 const walkCycle=Math.sin(Date.now()*0.008)*(Math.abs(player.vx)>1?8:0);
 drawLimb(-6,38,-8,48+walkCycle,-6,56+walkCycle,legThick,pantsColor);
@@ -955,6 +983,12 @@ ctx.beginPath();ctx.moveTo(fistX,fistY-7);ctx.lineTo(fistX+(Math.random()-0.5)*1
 // Arms down, body tucked
 drawLimb(-12,6,-8,20,-12,30,armThick,skinColor);
 drawLimb(12,6,8,20,12,30,armThick,skinColor);
+}else if(player.attack==="spinkick"){
+// Arms extended outward for spin balance
+const sProg=player.attackTime>0?(22-player.attackTime)/22:0;
+const spinAngle=sProg*Math.PI*2;
+drawLimb(-12,4,-30+Math.sin(spinAngle)*8,-2+Math.cos(spinAngle)*4,-42+Math.sin(spinAngle)*10,2,armThick,skinColor);
+drawLimb(12,4,30-Math.sin(spinAngle)*8,-2-Math.cos(spinAngle)*4,42-Math.sin(spinAngle)*10,2,armThick,skinColor);
 }else if(player.attack==="kick"){
 drawLimb(-12,4,-22,0,-18,-10,armThick,skinColor);
 drawLimb(12,4,22,0,18,-10,armThick,skinColor);
@@ -1393,6 +1427,7 @@ const pad=document.getElementById("movePad");
 const stick=document.getElementById("stick");
 let padTouchId=null; // Track specific touch for joystick
 let padJumpTriggered=false; // Prevent repeated jumps from holding up
+let padDownHeld=false; // Track if joystick is pushed down
 
 function moveStick(x,y){
 const rect=pad.getBoundingClientRect();
@@ -1413,6 +1448,8 @@ padJumpTriggered=true;
 }else{
 padJumpTriggered=false;
 }
+// Track down direction
+padDownHeld=dy>max*0.5;
 }
 
 function getTouchById(touches,id){
@@ -1486,22 +1523,45 @@ const dmg_bonus=bonusDmg;
 if(type==="punch"){hit(85,1+dmg_bonus);sfxPunch();}
 if(type==="kick"){hit(125,2+dmg_bonus);sfxKick();}
 if(type==="jumpkick"){hit(155,3+dmg_bonus);sfxKick();}
+if(type==="spinkick"){
+player.attackTime=22; // Longer animation
+// Hits enemies on BOTH sides (360 spin)
+for(const e of enemies){
+if(!e.alive) continue;
+const dx=Math.abs(e.x-player.x);
+const dy=Math.abs(e.y-player.y);
+if(dx<140&&dy<80){
+const dmg=4+dmg_bonus;
+e.hp-=dmg;
+e.flash=8;
+e.vx=(e.x>player.x?14:-14);
+e.vy=-6;
+spawnParticles(e.x-cameraX,e.y-30,"#ff6b6b",10);
+shake=6;combo++;comboTimer=150;
+player.special=Math.min(100,player.special+6);
+sfxHit();
+addFloatingText(e.x,e.y-60,dmg+"","#ff6b6b");
+if(e.hp<=0){killEnemy(e);}
+}
+}
+sfxKick();sfxPunch();
+}
 if(type==="uppercut"){
-// Uppercut launches enemies upward
+// Uppercut launches enemies sky-high
 for(const e of enemies){
 if(!e.alive) continue;
 const dx=Math.abs(e.x-player.x);
 const dy=Math.abs(e.y-player.y);
 if(dx<90&&dy<100){
 e.hp-=(3+dmg_bonus);
-e.flash=8;
-e.vx=(e.x>player.x?6:-6);
-e.vy=-18;
-spawnParticles(e.x-cameraX,e.y-40,"#FFD700",10);
-shake=8;combo++;comboTimer=150;
+e.flash=10;
+e.vx=(e.x>player.x?12:-12);
+e.vy=-45;
+spawnParticles(e.x-cameraX,e.y-40,"#FFD700",14);
+shake=10;combo++;comboTimer=150;
 player.special=Math.min(100,player.special+8);
 sfxHit();
-addFloatingText(e.x,e.y-60,(3+dmg_bonus)+"","#ffa500");
+addFloatingText(e.x,e.y-60,"💥"+(3+dmg_bonus),"#ffa500");
 if(e.hp<=0){killEnemy(e);}
 }
 }
@@ -1515,6 +1575,7 @@ document.getElementById("kick").addEventListener("touchstart",e=>{
 e.preventDefault();initAudio();
 if(player.jumping&&player.vy>0) doGroundPound();
 else if(player.jumping) doAttack("jumpkick");
+else if(padDownHeld) doAttack("spinkick");
 else doAttack("kick");
 });
 document.getElementById("special").addEventListener("touchstart",e=>{e.preventDefault();initAudio();doSpecial();});
@@ -1574,6 +1635,7 @@ if(player.jumping) doAttack("uppercut"); else doAttack("punch");}
 if(e.code==="KeyX"||e.code==="KeyK"){e.preventDefault();
 if(player.jumping&&(keys["ArrowDown"]||keys["KeyS"])) doGroundPound();
 else if(player.jumping) doAttack("jumpkick");
+else if(keys["ArrowDown"]||keys["KeyS"]) doAttack("spinkick");
 else doAttack("kick");}
 if(e.code==="KeyC"||e.code==="KeyL"){e.preventDefault();doSpecial();}
 if(e.code==="KeyF"||e.code==="KeyI"){e.preventDefault();boltCharging=true;boltChargeTime=0;}
