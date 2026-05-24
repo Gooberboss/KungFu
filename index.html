@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover">
-<title>Kung Fu Legends v13</title>
+<title>Kung Fu Legends v14</title>
 <style>
 html,body{
 margin:0;
@@ -73,32 +73,40 @@ box-shadow:0 4px 12px rgba(0,0,0,0.3);
 <div>⭐ Lv.<span id="level">1</span> (<span id="xp">0</span>xp)</div>
 <div>💨 Dash: <span id="dashStatus">Ready</span></div>
 <div>⚡ Special: <span id="specialBar">0</span>%</div>
-<div style="font-size:11px;opacity:0.6;margin-top:4px">Kung Fu Legends v13</div>
+<div>🔓 <span id="nextUnlock">Lv.2: Dash</span></div>
+<div>🎵 <span id="musicStatus">♪</span></div>
+<div style="font-size:11px;opacity:0.6;margin-top:4px">Kung Fu Legends v14</div>
 </div>
 <div id="movePad"><div id="stick"></div></div>
 <div id="actions">
 <div class="row">
-<button class="abtn" id="punch">拳</button>
+<button class="abtn" id="punch">👊</button>
 <button class="abtn" id="kick">🦶</button>
+<button class="abtn" id="blockBtn" style="background:rgba(150,180,255,0.82)">🛡</button>
 </div>
-<div class="row">
+<div class="row" id="row2" style="display:none">
 <button class="abtn gold" id="special">⚡</button>
 <button class="abtn blue" id="bolt">🔵</button>
+</div>
+<div class="row">
+<button class="abtn" id="pauseBtn" style="width:42px;height:42px;font-size:16px;background:rgba(255,255,255,0.5)">⏸</button>
 </div>
 </div>
 
 <div id="overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.85)">
 <div style="font-size:52px;margin-bottom:10px">🥋</div>
 <div style="color:white;font-size:36px;font-weight:bold">Kung Fu Legends</div>
-<div style="color:#aaa;font-size:16px;margin:10px 0 30px">v13 — Legendary Edition</div>
+<div style="color:#aaa;font-size:16px;margin:10px 0 30px">v14 — Ultimate Edition</div>
 <div style="color:#ccc;font-size:14px;text-align:center;max-width:380px;line-height:1.6;margin-bottom:20px">
 Move: WASD/Arrows | Jump: Joystick Up / Space<br>
-Punch: Z/J | Kick: X/K<br>
-Uppercut: Punch while jumping<br>
-Ground Pound: Kick while falling<br>
-Dash: Double-tap direction<br>
-Energy Bolt: F/I (hold to charge)<br>
-Special: C/L (when meter full)
+Punch: Z/J | Kick: X/K | Block: Shift/Q/B<br>
+<br>
+<span style="color:#64c8ff">Abilities unlock as you level up!</span><br>
+<span style="font-size:12px;color:#888">Lv2: Dash | Lv3: Uppercut | Lv4: Jump Kick<br>
+Lv5: Energy Bolt | Lv6: Spin Kick | Lv7: Ground Pound<br>
+Lv8: Charged Bolt | Lv9: Earthquake | Lv10: Special</span><br>
+<br>
+Pause: P | Music: M
 </div>
 <button id="startBtn" style="padding:16px 48px;font-size:22px;border:none;border-radius:12px;background:#e74c3c;color:white;cursor:pointer">START</button>
 <div style="color:#666;font-size:12px;margin-top:16px">High Score: <span id="hiScore">0</span></div>
@@ -142,19 +150,109 @@ function sfxLevelUp(){playSound(400,"sine",0.15,0.12);playSound(600,"sine",0.15,
 function sfxGroundPound(){playSound(60,"square",0.3,0.18);playSound(40,"sawtooth",0.2,0.12);}
 function sfxChargedBolt(){playSound(600,"sawtooth",0.3,0.12);playSound(1000,"sine",0.25,0.1);playSound(1400,"sine",0.2,0.08);}
 
+// === BACKGROUND MUSIC (procedural) ===
+let musicPlaying=false;
+let musicNodes=[];
+const musicNotes=[220,261,293,329,349,392,440];
+let musicInterval=null;
+function startMusic(){
+if(!audioCtx||musicPlaying) return;
+musicPlaying=true;
+let noteIdx=0;
+musicInterval=setInterval(()=>{
+if(!audioCtx||!musicPlaying) return;
+const osc=audioCtx.createOscillator();
+const gain=audioCtx.createGain();
+const freq=musicNotes[noteIdx%musicNotes.length]*(wave>=5?1.25:1);
+osc.type="triangle";
+osc.frequency.setValueAtTime(freq,audioCtx.currentTime);
+gain.gain.setValueAtTime(0.03,audioCtx.currentTime);
+gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.4);
+osc.connect(gain);gain.connect(audioCtx.destination);
+osc.start();osc.stop(audioCtx.currentTime+0.4);
+noteIdx++;
+// Add bass on every 4th beat
+if(noteIdx%4===0){
+const bass=audioCtx.createOscillator();
+const bg=audioCtx.createGain();
+bass.type="sine";
+bass.frequency.setValueAtTime(freq/4,audioCtx.currentTime);
+bg.gain.setValueAtTime(0.04,audioCtx.currentTime);
+bg.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+0.3);
+bass.connect(bg);bg.connect(audioCtx.destination);
+bass.start();bass.stop(audioCtx.currentTime+0.3);
+}
+},320);
+document.getElementById("musicStatus").textContent="♪♪";
+}
+function stopMusic(){
+musicPlaying=false;
+if(musicInterval){clearInterval(musicInterval);musicInterval=null;}
+document.getElementById("musicStatus").textContent="♪";
+}
+function toggleMusic(){
+if(musicPlaying) stopMusic(); else startMusic();
+}
+
+// === PAUSE SYSTEM ===
+let paused=false;
+function togglePause(){
+if(!gameStarted||gameOver) return;
+paused=!paused;
+if(paused&&musicPlaying){if(musicInterval){clearInterval(musicInterval);musicInterval=null;}}
+else if(!paused&&musicPlaying){startMusic();}
+}
+
 function gainXP(amount){
 playerXP+=amount;
 while(playerXP>=xpToNext){
 playerXP-=xpToNext;
 playerLevel++;
-xpToNext=Math.floor(xpToNext*1.4);
-player.maxHp+=10;
-player.hp=Math.min(player.hp+20,player.maxHp);
-bonusDmg=Math.floor(playerLevel/3);
+xpToNext=Math.floor(xpToNext*1.6);
+player.maxHp+=5;
+player.hp=Math.min(player.hp+10,player.maxHp);
+bonusDmg=Math.floor(playerLevel/4);
 sfxLevelUp();
 screenFlash=12;screenFlashColor="rgba(100,255,200,0.25)";
 addFloatingText(player.x,player.y-100,"LEVEL UP! Lv."+playerLevel,"#2ecc71",true);
+// Announce ability unlocks
+const unlock=abilityUnlocks[playerLevel];
+if(unlock){
+setTimeout(()=>{
+showWaveText("🔓 "+unlock.name+" Unlocked!");
+addFloatingText(player.x,player.y-130,"NEW: "+unlock.name,"#64c8ff",true);
+},500);
+}else{
 showWaveText("⭐ LEVEL "+playerLevel+" ⭐");
+}
+}
+}
+
+// === ABILITY UNLOCK SYSTEM ===
+const abilityUnlocks={
+2:{name:"Dash",desc:"Double-tap direction"},
+3:{name:"Uppercut",desc:"Punch while jumping"},
+4:{name:"Jump Kick",desc:"Kick while jumping"},
+5:{name:"Energy Bolt",desc:"F/I key"},
+6:{name:"Spin Kick",desc:"Down + Kick"},
+7:{name:"Ground Pound",desc:"Kick while falling"},
+8:{name:"Charged Bolt",desc:"Hold F/I"},
+9:{name:"Earthquake",desc:"Down + Punch"},
+10:{name:"Special Attack",desc:"C/L when meter full"}
+};
+
+function hasAbility(name){
+switch(name){
+case "dash": return playerLevel>=2;
+case "uppercut": return playerLevel>=3;
+case "jumpkick": return playerLevel>=4;
+case "bolt": return playerLevel>=5;
+case "spinkick": return playerLevel>=6;
+case "groundpound": return playerLevel>=7;
+case "chargedbolt": return playerLevel>=8;
+case "earthquake": return playerLevel>=9;
+case "special": return playerLevel>=10;
+default: return true;
 }
 }
 
@@ -172,6 +270,27 @@ slowMo=Math.min(slowMo+15,30);
 }
 }
 
+// === COMBO MILESTONE REWARDS ===
+function checkComboRewards(){
+if(combo===10){
+player.hp=Math.min(player.maxHp,player.hp+10);
+addFloatingText(player.x,player.y-120,"🔥 10 COMBO! +10 HP","#2ecc71",true);
+sfxPickup();
+}else if(combo===20){
+player.special=Math.min(100,player.special+30);
+addFloatingText(player.x,player.y-120,"🔥🔥 20 COMBO! +30⚡","#FFD700",true);
+sfxPickup();screenFlash=6;screenFlashColor="rgba(255,200,0,0.15)";
+}else if(combo===50){
+player.hp=player.maxHp;
+player.special=100;
+addFloatingText(player.x,player.y-120,"💀 50 COMBO! FULL RESTORE!","#ff64ff",true);
+sfxLevelUp();screenFlash=15;screenFlashColor="rgba(255,100,255,0.2)";
+}
+}
+
+// === WALL JUMP ===
+let wallJumpCooldown=0;
+
 // === GAME STATE ===
 const gravity=0.8;
 let gameOver=false;
@@ -185,7 +304,8 @@ const player={
 x:150,y:0,vx:0,vy:0,dir:1,
 jumping:false,attack:"",attackTime:0,
 hp:100,maxHp:100,flash:0,
-invincible:0,special:0
+invincible:0,special:0,
+blocking:false,blockTimer:0,perfectBlock:0
 };
 player.y=ground();
 
@@ -214,15 +334,18 @@ let bonusDmg=0;
 let killStreak=0;
 let killStreakTimer=0;
 let gameTime=0;
+let bestCombo=0;
+let totalKills=0;
 const keys={};
 
 // === ENEMY TYPES ===
 const ENEMY_TYPES={
-grunt:{hp:2,speed:1.5,color:"#6a0dad",size:1,score:100,attackRange:50,attackCooldown:90,dmg:5},
-ninja:{hp:1,speed:3.5,color:"#3d3d6b",size:0.9,score:200,attackRange:45,attackCooldown:50,dmg:3},
-brute:{hp:6,speed:0.8,color:"#8b0000",size:1.3,score:250,attackRange:60,attackCooldown:120,dmg:10},
-archer:{hp:2,speed:1.0,color:"#8b6914",size:1,score:180,attackRange:300,attackCooldown:150,dmg:4},
-boss:{hp:30,speed:0.6,color:"#ff1744",size:1.8,score:1000,attackRange:80,attackCooldown:60,dmg:15}
+grunt:{hp:4,speed:2.0,color:"#6a0dad",size:1,score:100,attackRange:55,attackCooldown:70,dmg:8},
+ninja:{hp:2,speed:4.5,color:"#3d3d6b",size:0.9,score:200,attackRange:50,attackCooldown:40,dmg:6},
+brute:{hp:10,speed:1.0,color:"#8b0000",size:1.3,score:250,attackRange:65,attackCooldown:90,dmg:15},
+archer:{hp:3,speed:1.3,color:"#8b6914",size:1,score:180,attackRange:350,attackCooldown:110,dmg:7},
+mage:{hp:5,speed:1.4,color:"#6b2fa0",size:1.05,score:300,attackRange:280,attackCooldown:140,dmg:10},
+boss:{hp:50,speed:0.8,color:"#ff1744",size:1.8,score:1000,attackRange:90,attackCooldown:45,dmg:20}
 };
 
 const projectiles=[];
@@ -237,43 +360,48 @@ if(isBossWave){
 const def=ENEMY_TYPES.boss;
 enemies.push({
 x:player.x+600,y:ground(),vx:0,vy:0,
-alive:true,hp:def.hp+waveNum*2,maxHp:def.hp+waveNum*2,
-type:"boss",speed:def.speed,color:def.color,size:def.size,
+alive:true,hp:def.hp+waveNum*5,maxHp:def.hp+waveNum*5,
+type:"boss",speed:def.speed+waveNum*0.03,color:def.color,size:def.size,
 scoreVal:def.score*waveNum,attackRange:def.attackRange,
-attackCooldown:def.attackCooldown,attackTimer:0,
-flash:0,state:"chase",dmg:def.dmg
+attackCooldown:Math.max(25,def.attackCooldown-waveNum*2),attackTimer:0,
+flash:0,state:"chase",dmg:def.dmg+Math.floor(waveNum/2)
 });
-// Add some grunts as support
-for(let i=0;i<waveNum;i++){
-const def2=ENEMY_TYPES.grunt;
+// Add mixed support enemies
+const supportCount=waveNum+Math.floor(waveNum/2);
+const supportTypes=["grunt","ninja"];
+if(waveNum>=10) supportTypes.push("brute","archer");
+for(let i=0;i<supportCount;i++){
+const sType=supportTypes[Math.floor(Math.random()*supportTypes.length)];
+const def2=ENEMY_TYPES[sType];
 const side=Math.random()>0.5?1:-1;
 enemies.push({
 x:player.x+side*(300+Math.random()*300),y:ground(),vx:0,vy:0,
-alive:true,hp:def2.hp,maxHp:def2.hp,type:"grunt",
-speed:def2.speed,color:def2.color,size:def2.size,
+alive:true,hp:def2.hp+Math.floor(waveNum/2),maxHp:def2.hp+Math.floor(waveNum/2),type:sType,
+speed:def2.speed+(waveNum*0.08),color:def2.color,size:def2.size,
 scoreVal:def2.score,attackRange:def2.attackRange,
-attackCooldown:def2.attackCooldown,attackTimer:0,
-flash:0,state:"chase",dmg:def2.dmg
+attackCooldown:Math.max(25,def2.attackCooldown-waveNum*3),attackTimer:0,
+flash:0,state:"chase",dmg:def2.dmg+Math.floor(waveNum/3)
 });
 }
 showWaveText("⚠️ BOSS WAVE "+waveNum+" ⚠️");
 }else{
-const count=5+waveNum*2;
+const count=6+waveNum*3;
 const types=["grunt"];
 if(waveNum>=2) types.push("ninja");
 if(waveNum>=3) types.push("brute");
 if(waveNum>=4) types.push("archer");
+if(waveNum>=5) types.push("mage");
 for(let i=0;i<count;i++){
 const type=types[Math.floor(Math.random()*types.length)];
 const def=ENEMY_TYPES[type];
 const side=Math.random()>0.5?1:-1;
 enemies.push({
 x:player.x+side*(350+Math.random()*350),y:ground(),vx:0,vy:0,
-alive:true,hp:def.hp+Math.floor(waveNum/3),maxHp:def.hp+Math.floor(waveNum/3),
-type:type,speed:def.speed+(waveNum*0.05),color:def.color,size:def.size,
+alive:true,hp:def.hp+Math.floor(waveNum/2),maxHp:def.hp+Math.floor(waveNum/2),
+type:type,speed:def.speed+(waveNum*0.1),color:def.color,size:def.size,
 scoreVal:def.score,attackRange:def.attackRange,
-attackCooldown:Math.max(30,def.attackCooldown-waveNum*2),attackTimer:0,
-flash:0,state:"chase",dmg:def.dmg
+attackCooldown:Math.max(20,def.attackCooldown-waveNum*3),attackTimer:0,
+flash:0,state:"chase",dmg:def.dmg+Math.floor(waveNum/3)
 });
 }
 showWaveText("Wave "+waveNum);
@@ -306,9 +434,9 @@ floatingTexts.push({x,y,text,color,life:50,big:big||false});
 }
 
 function spawnPickup(x,y){
-if(Math.random()<0.25){
-const type=Math.random()<0.7?"health":"power";
-pickups.push({x,y:y-20,type,life:300,vy:-3});
+if(Math.random()<0.15){
+const type=Math.random()<0.6?"health":"power";
+pickups.push({x,y:y-20,type,life:240,vy:-3});
 }
 }
 
@@ -326,10 +454,11 @@ e.vy=-5;
 spawnParticles(e.x-cameraX,e.y-40,"#FFD700",8);
 shake=7;
 combo++;
-comboTimer=150;
+comboTimer=100;
 hitAny=true;
-player.special=Math.min(100,player.special+5);
+player.special=Math.min(100,player.special+3);
 sfxHit();
+checkComboRewards();
 addFloatingText(e.x,e.y-60,damage+"",combo>5?"#ff6b6b":combo>3?"#ffa500":"#FFD700");
 if(e.hp<=0){
 killEnemy(e);
@@ -381,6 +510,7 @@ life:40,color:"#FFD700",size:4
 
 function killEnemy(e){
 e.alive=false;
+totalKills++;
 const pts=e.scoreVal*Math.min(combo,10);
 score+=pts;
 spawnParticles(e.x-cameraX,e.y-30,e.color,18);
@@ -474,6 +604,82 @@ player.attackTime=20;
 sfxGroundPound();
 }
 
+function doEarthquake(){
+if(gameOver||!gameStarted||player.jumping) return;
+player.attack="earthquake";
+player.attackTime=24;
+shake=18;
+screenFlash=10;screenFlashColor="rgba(180,120,50,0.25)";
+sfxGroundPound();
+playSound(40,"square",0.5,0.2);
+playSound(70,"sawtooth",0.4,0.15);
+// Damage all grounded enemies in a wide range
+for(const e of enemies){
+if(!e.alive) continue;
+const dx=Math.abs(e.x-player.x);
+if(dx<350){
+const dmg=5+bonusDmg;
+const knockback=dx<150?18:12;
+e.hp-=dmg;
+e.flash=10;
+e.vx=(e.x>player.x?knockback:-knockback);
+e.vy=-12-Math.random()*6;
+spawnParticles(e.x-cameraX,e.y-20,"#8b7355",10);
+combo++;comboTimer=150;
+player.special=Math.min(100,player.special+4);
+sfxHit();
+addFloatingText(e.x,e.y-60,dmg+"","#d4a056");
+checkComboRewards();
+if(e.hp<=0){killEnemy(e);}
+}
+}
+// Ground shockwave particles
+for(let i=0;i<40;i++){
+const side=Math.random()>0.5?1:-1;
+const dist=Math.random()*300;
+particles.push({
+x:player.x-cameraX+side*dist,
+y:ground()+50+Math.random()*10,
+vx:side*(2+Math.random()*4),
+vy:-4-Math.random()*8,
+life:30+Math.random()*15,
+color:Math.random()>0.5?"#8b7355":"#a0522d",
+size:3+Math.random()*4
+});
+}
+// Rock debris flying up
+for(let i=0;i<15;i++){
+const rx=player.x-cameraX+(Math.random()-0.5)*250;
+particles.push({
+x:rx,
+y:ground()+55,
+vx:(Math.random()-0.5)*6,
+vy:-8-Math.random()*12,
+life:35+Math.random()*20,
+color:Math.random()>0.3?"#6b5b3a":"#4a3c2a",
+size:4+Math.random()*5
+});
+}
+addFloatingText(player.x,player.y-90,"🌍 EARTHQUAKE!","#d4a056",true);
+slowMo=Math.min(slowMo+10,25);
+}
+
+// === BLOCKING ===
+function startBlock(){
+if(gameOver||!gameStarted||player.jumping||player.attack) return;
+player.blocking=true;
+player.blockTimer=0;
+player.perfectBlock=10; // First 10 frames = perfect block window
+player.vx=0; // Can't move while blocking
+}
+function stopBlock(){
+player.blocking=false;
+player.blockTimer=0;
+player.perfectBlock=0;
+}
+function sfxBlock(){playSound(300,"square",0.08,0.12);playSound(150,"sawtooth",0.06,0.08);}
+function sfxPerfectBlock(){playSound(800,"sine",0.12,0.15);playSound(1200,"sine",0.08,0.1);playSound(400,"triangle",0.1,0.08);}
+
 function landGroundPound(){
 shake=10;
 screenFlash=5;screenFlashColor="rgba(150,100,50,0.2)";
@@ -515,6 +721,13 @@ const dir=dist>0?-1:1;
 if(absDist>1000){
 e.x=player.x+(dist>0?1:-1)*(400+Math.random()*200);
 }
+// Enemies teleport closer if too far for too long (anti-kiting)
+if(absDist>600&&e.type!=="archer"&&e.type!=="mage"){
+if(Math.random()<0.01){
+e.x=player.x+(dist>0?1:-1)*(200+Math.random()*150);
+spawnParticles(e.x-cameraX,e.y-20,e.color,6);
+}
+}
 
 // Archer behavior - keep distance and shoot
 if(e.type==="archer"){
@@ -538,25 +751,100 @@ dmg:e.dmg,life:80,color:"#ff8c00"
 e.attackTimer=e.attackCooldown;
 }
 }
-}else{
-// Melee behavior
-if(absDist>e.attackRange+20){
+}else if(e.type==="mage"){
+// Mage behavior: teleport and cast area spells
+e.attackTimer--;
+if(absDist<120){
+// Teleport away when player gets close
+e.x=player.x+(Math.random()>0.5?1:-1)*(200+Math.random()*150);
+spawnParticles(e.x-cameraX,e.y-20,"#9b59b6",12);
+sfxDash();
+e.attackTimer=Math.max(0,e.attackTimer-30);
+}else if(absDist>e.attackRange){
 e.state="chase";
 e.vx=dir*e.speed;
 }else{
 e.state="attack";
 e.vx=0;
+if(e.attackTimer<=0){
+// Cast area spell at player position
+projectiles.push({
+x:player.x-60+Math.random()*120,y:player.y-200,
+vx:0,vy:6,
+dmg:e.dmg,life:60,color:"#9b59b6",isMageSpell:true
+});
+projectiles.push({
+x:player.x-40+Math.random()*80,y:player.y-180,
+vx:(Math.random()-0.5)*3,vy:5,
+dmg:e.dmg,life:55,color:"#bf55ec",isMageSpell:true
+});
+spawnParticles(e.x-cameraX,e.y-30,"#9b59b6",8);
+e.attackTimer=e.attackCooldown;
+}
+}
+}else{
+// Melee behavior
+if(absDist>e.attackRange+20){
+e.state="chase";
+e.vx=dir*e.speed;
+// Ninjas try to flank - occasionally jump over player
+if(e.type==="ninja"&&absDist<200&&Math.random()<0.02&&e.vy===0){
+e.vy=-16;
+e.vx=dir*e.speed*3;
+}
+}else{
+e.state="attack";
+e.vx=0;
 e.attackTimer--;
+// Ninja dodge: jump back when player attacks nearby
+if(e.type==="ninja"&&player.attack&&absDist<100&&Math.random()<0.15&&e.vy===0){
+e.vx=-dir*10;
+e.vy=-10;
+spawnParticles(e.x-cameraX,e.y-20,"#3d3d6b",5);
+}
 if(e.attackTimer<=0){
 if(!player.invincible){
+if(player.blocking){
+// Blocking reduces damage
+if(player.perfectBlock>0){
+// Perfect block: no damage, stun enemy, counter opportunity
+sfxPerfectBlock();
+e.flash=15;
+e.vx=(e.x>player.x?18:-18);
+e.vy=-8;
+e.attackTimer=e.attackCooldown+30;
+shake=6;
+screenFlash=5;screenFlashColor="rgba(100,200,255,0.2)";
+spawnParticles(player.x-cameraX,player.y-20,"#64c8ff",12);
+addFloatingText(player.x,player.y-70,"PERFECT BLOCK!","#64c8ff",true);
+player.special=Math.min(100,player.special+10);
+slowMo=Math.min(slowMo+8,20);
+}else{
+// Normal block: 75% damage reduction, knockback enemy
+sfxBlock();
+const blocked=Math.floor(e.dmg*0.25);
+player.hp-=blocked;
+player.flash=4;
+player.invincible=8;
+e.vx=(e.x>player.x?8:-8);
+shake=3;
+spawnParticles(player.x-cameraX,player.y-20,"#aaaaaa",6);
+addFloatingText(player.x,player.y-70,"-"+blocked+" (blocked)","#aaaaaa");
+}
+}else{
 player.hp-=e.dmg;
 player.flash=8;
-player.invincible=25;
+player.invincible=15;
 shake=5;
 spawnParticles(player.x-cameraX,player.y-30,"#e74c3c",6);
 addFloatingText(player.x,player.y-70,"-"+e.dmg,"#e74c3c");
 }
+}
 e.attackTimer=e.attackCooldown;
+// Brutes have a chance to do a follow-up slam
+if(e.type==="brute"&&Math.random()<0.3){
+e.attackTimer=Math.floor(e.attackCooldown*0.4);
+}
 }
 }
 }
@@ -578,9 +866,43 @@ p.life--;
 if(p.life<=0){projectiles.splice(i,1);continue;}
 // Hit player
 if(!player.invincible && Math.abs(p.x-player.x)<30 && Math.abs(p.y-player.y+20)<40){
+if(player.blocking){
+if(player.perfectBlock>0){
+sfxPerfectBlock();
+spawnParticles(player.x-cameraX,player.y-20,"#64c8ff",8);
+addFloatingText(player.x,player.y-70,"DEFLECTED!","#64c8ff",true);
+player.special=Math.min(100,player.special+8);
+// Reflect projectile back
+p.vx=-p.vx*1.5;
+p.dmg=Math.floor(p.dmg*2);
+p.color="#64c8ff";
+p.life=60;
+// Don't splice - it's now a player projectile
+for(const e2 of enemies){
+if(!e2.alive) continue;
+if(Math.abs(p.x-e2.x)<40&&Math.abs(p.y-e2.y+20)<50){
+e2.hp-=p.dmg;e2.flash=8;
+e2.vx=(p.vx>0?8:-8);
+spawnParticles(e2.x-cameraX,e2.y-30,"#64c8ff",6);
+if(e2.hp<=0){killEnemy(e2);}
+}
+}
+projectiles.splice(i,1);
+}else{
+sfxBlock();
+const blocked=Math.floor(p.dmg*0.25);
+player.hp-=blocked;
+player.flash=4;
+player.invincible=6;
+shake=2;
+spawnParticles(player.x-cameraX,player.y-20,"#aaaaaa",4);
+addFloatingText(player.x,player.y-70,"-"+blocked+" (blocked)","#aaaaaa");
+projectiles.splice(i,1);
+}
+}else{
 player.hp-=p.dmg;
 player.flash=8;
-player.invincible=20;
+player.invincible=12;
 shake=4;
 spawnParticles(player.x-cameraX,player.y-30,"#e74c3c",5);
 addFloatingText(player.x,player.y-70,"-"+p.dmg,"#e74c3c");
@@ -588,9 +910,10 @@ projectiles.splice(i,1);
 }
 }
 }
+}
 
 function update(){
-if(gameOver||!gameStarted) return;
+if(gameOver||!gameStarted||paused) return;
 
 let kbMove=0;
 if(keys["ArrowLeft"]||keys["KeyA"]) kbMove=-1;
@@ -605,7 +928,11 @@ player.vx=dashDir*22;
 player.invincible=2;
 if(dashTimer%2===0) spawnParticles(player.x-cameraX,player.y+20,"#64c8ff",3);
 }else{
+if(player.blocking){
+player.vx=finalMove*2; // Slow movement while blocking
+}else{
 player.vx=finalMove*7;
+}
 if(finalMove>0.1) player.dir=1;
 if(finalMove<-0.1) player.dir=-1;
 if(player.attack==="jumpkick") player.vx+=player.dir*6;
@@ -618,10 +945,29 @@ if(player.y>ground()){player.y=ground();player.vy=0;
 if(player.attack==="groundpound"){landGroundPound();player.attack="";player.attackTime=0;}
 player.jumping=false;}
 
+// Wall jump: bounce off screen edges (requires dash unlock)
+if(wallJumpCooldown>0) wallJumpCooldown--;
+if(hasAbility("dash")){
+const screenLeft=cameraX+30;
+const screenRight=cameraX+canvas.width-30;
+if(player.jumping&&wallJumpCooldown<=0){
+if(player.x<=screenLeft&&player.vx<0){
+player.vx=12;player.vy=-14;player.dir=1;wallJumpCooldown=20;
+spawnParticles(player.x-cameraX,player.y,"#64c8ff",6);sfxDash();
+addFloatingText(player.x,player.y-50,"Wall Jump!","#64c8ff");
+}else if(player.x>=screenRight&&player.vx>0){
+player.vx=-12;player.vy=-14;player.dir=-1;wallJumpCooldown=20;
+spawnParticles(player.x-cameraX,player.y,"#64c8ff",6);sfxDash();
+addFloatingText(player.x,player.y-50,"Wall Jump!","#64c8ff");
+}
+}
+}
+
 if(player.invincible>0) player.invincible--;
 if(player.flash>0) player.flash--;
 if(player.attackTime>0){player.attackTime--;if(player.attackTime<=0) player.attack="";}
-if(comboTimer>0){comboTimer--;if(comboTimer<=0) combo=0;}
+if(player.blocking){player.blockTimer++;if(player.perfectBlock>0) player.perfectBlock--;}
+if(comboTimer>0){comboTimer--;if(comboTimer<=0){bestCombo=Math.max(bestCombo,combo);combo=0;}}
 if(screenFlash>0) screenFlash--;
 
 cameraX+=(player.x-cameraX-canvas.width*0.35)*0.06;
@@ -637,11 +983,11 @@ pk.life--;
 if(pk.life<=0){pickups.splice(i,1);continue;}
 if(Math.abs(pk.x-player.x)<40 && Math.abs(pk.y-player.y)<50){
 if(pk.type==="health"){
-player.hp=Math.min(player.maxHp,player.hp+20);
-addFloatingText(player.x,player.y-70,"+20 HP","#2ecc71");
+player.hp=Math.min(player.maxHp,player.hp+12);
+addFloatingText(player.x,player.y-70,"+12 HP","#2ecc71");
 }else{
-player.special=Math.min(100,player.special+25);
-addFloatingText(player.x,player.y-70,"+25⚡","#FFD700");
+player.special=Math.min(100,player.special+20);
+addFloatingText(player.x,player.y-70,"+20⚡","#FFD700");
 }
 sfxPickup();
 spawnParticles(pk.x-cameraX,pk.y,"#2ecc71",6);
@@ -738,13 +1084,15 @@ if(shake>0) shake--;
 const aliveCount=enemies.filter(e=>e.alive).length;
 if(aliveCount===0&&enemies.length>0){
 waveTimer++;
-if(waveTimer>90){wave++;spawnWave(wave);waveTimer=0;}
+if(waveTimer>50){wave++;spawnWave(wave);waveTimer=0;}
 }else{waveTimer=0;}
 
 // Game over
 if(player.hp<=0){
 player.hp=0;gameOver=true;
+bestCombo=Math.max(bestCombo,combo);
 sfxDeath();
+stopMusic();
 if(score>highScore){highScore=score;localStorage.setItem("kfHighScore",highScore);}
 }
 
@@ -756,8 +1104,27 @@ document.getElementById("combo").textContent=combo;
 document.getElementById("wave").textContent=wave;
 document.getElementById("level").textContent=playerLevel;
 document.getElementById("xp").textContent=playerXP+"/"+xpToNext;
-document.getElementById("dashStatus").textContent=dashCooldown>0?"...":"Ready";
+document.getElementById("dashStatus").textContent=dashCooldown>0?"...":hasAbility("dash")?"Ready":"🔒";
 document.getElementById("specialBar").textContent=Math.floor(player.special);
+// Update next unlock display
+const nextLvl=Object.keys(abilityUnlocks).map(Number).find(l=>l>playerLevel);
+if(nextLvl){
+document.getElementById("nextUnlock").textContent="Lv."+nextLvl+": "+abilityUnlocks[nextLvl].name;
+}else{
+document.getElementById("nextUnlock").textContent="All unlocked!";
+}
+// Dim locked buttons
+document.getElementById("special").style.opacity=hasAbility("special")?"1":"0.3";
+document.getElementById("bolt").style.opacity=hasAbility("bolt")?"1":"0.3";
+// Show/hide ability buttons when unlocked
+const row2=document.getElementById("row2");
+if(hasAbility("bolt")||hasAbility("special")){
+row2.style.display="flex";
+document.getElementById("bolt").style.display=hasAbility("bolt")?"":"none";
+document.getElementById("special").style.display=hasAbility("special")?"":"none";
+}else{
+row2.style.display="none";
+}
 }
 
 // === DRAWING ===
@@ -905,6 +1272,22 @@ drawLimb(6,38,12,44,8,38,legThick,pantsColor);
 ctx.globalAlpha=0.4;ctx.strokeStyle="#aa8844";ctx.lineWidth=6;
 ctx.beginPath();ctx.moveTo(0,56);ctx.lineTo(0,56+20);ctx.stroke();
 ctx.globalAlpha=1;
+}else if(player.attack==="earthquake"){
+// Wide stance, fists slamming ground
+const eProg=player.attackTime>0?(24-player.attackTime)/24:0;
+const spread=8+eProg*6;
+drawLimb(-spread,38,-spread-4,48,-spread-2,56,legThick+1,pantsColor);
+drawLimb(spread,38,spread+4,48,spread+2,56,legThick+1,pantsColor);
+// Ground shockwave rings
+if(eProg>0.3){
+ctx.globalAlpha=0.4*(1-eProg);
+ctx.strokeStyle="#d4a056";ctx.lineWidth=3;
+const ringR=eProg*120;
+ctx.beginPath();ctx.ellipse(0,58,ringR,ringR*0.3,0,0,Math.PI*2);ctx.stroke();
+ctx.strokeStyle="#8b7355";ctx.lineWidth=2;
+ctx.beginPath();ctx.ellipse(0,58,ringR*0.6,ringR*0.18,0,0,Math.PI*2);ctx.stroke();
+ctx.globalAlpha=1;
+}
 }else if(player.attack==="spinkick"){
 // Spinning kick - leg sweeps in a circle
 const sProg=player.attackTime>0?(22-player.attackTime)/22:0;
@@ -983,6 +1366,29 @@ ctx.beginPath();ctx.moveTo(fistX,fistY-7);ctx.lineTo(fistX+(Math.random()-0.5)*1
 // Arms down, body tucked
 drawLimb(-12,6,-8,20,-12,30,armThick,skinColor);
 drawLimb(12,6,8,20,12,30,armThick,skinColor);
+}else if(player.attack==="earthquake"){
+// Fists slamming into the ground
+const eProg=player.attackTime>0?(24-player.attackTime)/24:0;
+const fistDown=Math.min(1,eProg*3)*40;
+drawLimb(-12,6,-18,10+fistDown*0.5,-22,20+fistDown,armThick+1,skinColor);
+drawLimb(12,6,18,10+fistDown*0.5,22,20+fistDown,armThick+1,skinColor);
+// Fists
+ctx.fillStyle=skinColor;
+ctx.beginPath();ctx.arc(-22,20+fistDown,8,0,Math.PI*2);ctx.fill();
+ctx.beginPath();ctx.arc(22,20+fistDown,8,0,Math.PI*2);ctx.fill();
+ctx.strokeStyle="#333";ctx.lineWidth=1.5;
+ctx.beginPath();ctx.arc(-22,20+fistDown,8,0,Math.PI*2);ctx.stroke();
+ctx.beginPath();ctx.arc(22,20+fistDown,8,0,Math.PI*2);ctx.stroke();
+// Impact sparks when fists hit ground
+if(eProg>0.3){
+ctx.strokeStyle="rgba(212,160,86,0.8)";ctx.lineWidth=2;
+for(let i=0;i<4;i++){
+const a=-Math.PI*0.5+(Math.random()-0.5)*2;
+const len=8+Math.random()*12;
+ctx.beginPath();ctx.moveTo(-22,20+fistDown);ctx.lineTo(-22+Math.cos(a)*len,20+fistDown+Math.sin(a)*len);ctx.stroke();
+ctx.beginPath();ctx.moveTo(22,20+fistDown);ctx.lineTo(22+Math.cos(a)*len,20+fistDown+Math.sin(a)*len);ctx.stroke();
+}
+}
 }else if(player.attack==="spinkick"){
 // Arms extended outward for spin balance
 const sProg=player.attackTime>0?(22-player.attackTime)/22:0;
@@ -994,6 +1400,20 @@ drawLimb(-12,4,-22,0,-18,-10,armThick,skinColor);
 drawLimb(12,4,22,0,18,-10,armThick,skinColor);
 ctx.fillStyle=skinColor;ctx.beginPath();ctx.arc(-18,-10,5,0,Math.PI*2);ctx.fill();
 ctx.beginPath();ctx.arc(18,-10,5,0,Math.PI*2);ctx.fill();
+}else if(player.blocking){
+// Block pose: arms crossed in front
+const pulse=player.perfectBlock>0?Math.sin(Date.now()*0.03)*2:0;
+drawLimb(-12,4,-8,-8+pulse,-2,-2+pulse,armThick+1,skinColor);
+drawLimb(12,4,8,-8+pulse,2,-2+pulse,armThick+1,skinColor);
+ctx.fillStyle=skinColor;
+ctx.beginPath();ctx.arc(-2,-2+pulse,6,0,Math.PI*2);ctx.fill();
+ctx.beginPath();ctx.arc(2,-2+pulse,6,0,Math.PI*2);ctx.fill();
+// Block shield effect
+ctx.globalAlpha=player.perfectBlock>0?0.5:0.25;
+ctx.strokeStyle=player.perfectBlock>0?"#64c8ff":"#aaaaaa";
+ctx.lineWidth=player.perfectBlock>0?4:3;
+ctx.beginPath();ctx.arc(0,5,28,-.8,.8);ctx.stroke();
+ctx.globalAlpha=1;
 }else{
 const bob=Math.sin(Date.now()*0.004)*2;
 drawLimb(-12,4,-22,8+bob,-18,0+bob,armThick,skinColor);
@@ -1089,6 +1509,15 @@ ctx.fillStyle=e.flash>0?"#ffffff":"#f2c28b";ctx.fill();
 if(e.type==="brute"){ctx.fillStyle="#444";ctx.fillRect(-16*s,-24*s,32*s,8*s);
 ctx.strokeStyle="#8b0000";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-6*s,-20*s);ctx.lineTo(4*s,-14*s);ctx.stroke();}
 if(e.type==="ninja"){ctx.fillStyle="#1a1a2e";ctx.fillRect(-14*s,-14*s,28*s,10*s);}
+if(e.type==="mage"){
+ctx.fillStyle="#9b59b6";ctx.beginPath();ctx.moveTo(0,-32*s);ctx.lineTo(-10*s,-18*s);ctx.lineTo(10*s,-18*s);ctx.closePath();ctx.fill();
+ctx.fillStyle="#bf55ec";ctx.beginPath();ctx.arc(0,-18*s,3*s,0,Math.PI*2);ctx.fill();
+// Floating rune particles
+ctx.globalAlpha=0.5+Math.sin(Date.now()*0.008)*0.3;
+ctx.strokeStyle="#bf55ec";ctx.lineWidth=1.5;
+ctx.beginPath();ctx.arc(0,-10*s,20*s,Date.now()*0.003,Date.now()*0.003+1.5);ctx.stroke();
+ctx.globalAlpha=1;
+}
 if(e.type==="boss"){ctx.fillStyle="#FFD700";ctx.fillRect(-16*s,-28*s,32*s,6*s);
 ctx.fillStyle="#ff1744";ctx.beginPath();ctx.moveTo(0,-32*s);ctx.lineTo(-5*s,-28*s);ctx.lineTo(5*s,-28*s);ctx.closePath();ctx.fill();}
 
@@ -1105,10 +1534,23 @@ function drawProjectiles(){
 for(const p of projectiles){
 ctx.save();
 ctx.translate(p.x-cameraX,p.y);
+if(p.isMageSpell){
+// Mage spell: glowing orb
+ctx.globalAlpha=0.7;
+ctx.fillStyle="#9b59b6";
+ctx.beginPath();ctx.arc(0,0,10,0,Math.PI*2);ctx.fill();
+ctx.fillStyle="#bf55ec";
+ctx.beginPath();ctx.arc(0,0,5,0,Math.PI*2);ctx.fill();
+ctx.globalAlpha=0.3;
+ctx.fillStyle="#e8a0ff";
+ctx.beginPath();ctx.arc(0,0,15,0,Math.PI*2);ctx.fill();
+ctx.globalAlpha=1;
+}else{
 ctx.fillStyle=p.color;
 ctx.beginPath();ctx.ellipse(0,0,8,4,0,0,Math.PI*2);ctx.fill();
 ctx.fillStyle="rgba(255,140,0,0.4)";
 ctx.beginPath();ctx.ellipse(-p.vx*2,0,12,6,0,0,Math.PI*2);ctx.fill();
+}
 ctx.restore();
 }
 }
@@ -1175,6 +1617,7 @@ ctx.beginPath();ctx.arc(0,-4*s,14*s,Math.PI,Math.PI*2);ctx.fill();
 // Type details
 if(h.type==="brute"){ctx.fillStyle="#444";ctx.fillRect(-14*s,-10*s,28*s,6*s);}
 if(h.type==="ninja"){ctx.fillStyle="#1a1a2e";ctx.fillRect(-12*s,0,24*s,8*s);}
+if(h.type==="mage"){ctx.fillStyle="#9b59b6";ctx.beginPath();ctx.moveTo(0,-16*s);ctx.lineTo(-8*s,-4*s);ctx.lineTo(8*s,-4*s);ctx.closePath();ctx.fill();}
 if(h.type==="boss"){ctx.fillStyle="#FFD700";ctx.fillRect(-14*s,-14*s,28*s,5*s);
 ctx.fillStyle="#ff1744";ctx.beginPath();ctx.moveTo(0,-18*s);ctx.lineTo(-4*s,-14*s);ctx.lineTo(4*s,-14*s);ctx.closePath();ctx.fill();}
 
@@ -1353,15 +1796,30 @@ ctx.fillStyle="rgba(0,0,0,0.8)";
 ctx.fillRect(0,0,canvas.width,canvas.height);
 ctx.textAlign="center";
 ctx.fillStyle="#e74c3c";ctx.font="bold 56px Arial";
-ctx.fillText("GAME OVER",canvas.width/2,canvas.height/2-50);
-ctx.fillStyle="white";ctx.font="24px Arial";
-ctx.fillText("Score: "+score+" | Wave: "+wave+" | Level: "+playerLevel,canvas.width/2,canvas.height/2);
+ctx.fillText("GAME OVER",canvas.width/2,canvas.height/2-80);
+ctx.fillStyle="white";ctx.font="22px Arial";
+ctx.fillText("Score: "+score,canvas.width/2,canvas.height/2-40);
+ctx.fillStyle="#aaa";ctx.font="16px Arial";
+ctx.fillText("Wave: "+wave+" | Level: "+playerLevel+" | Best Combo: "+bestCombo+"x",canvas.width/2,canvas.height/2-10);
+ctx.fillText("Enemies Defeated: "+totalKills+" | Time: "+Math.floor(gameTime/60)+"s",canvas.width/2,canvas.height/2+15);
 if(score>=highScore&&score>0){
-ctx.fillStyle="#FFD700";ctx.font="20px Arial";
-ctx.fillText("🏆 NEW HIGH SCORE! 🏆",canvas.width/2,canvas.height/2+35);
+ctx.fillStyle="#FFD700";ctx.font="bold 22px Arial";
+ctx.fillText("🏆 NEW HIGH SCORE! 🏆",canvas.width/2,canvas.height/2+50);
 }
 ctx.fillStyle="#aaa";ctx.font="18px Arial";
-ctx.fillText("Press R or tap to restart",canvas.width/2,canvas.height/2+75);
+ctx.fillText("Press R or tap to restart",canvas.width/2,canvas.height/2+85);
+ctx.textAlign="left";
+}
+
+// Pause overlay
+if(paused){
+ctx.fillStyle="rgba(0,0,0,0.6)";
+ctx.fillRect(0,0,canvas.width,canvas.height);
+ctx.textAlign="center";
+ctx.fillStyle="white";ctx.font="bold 48px Arial";
+ctx.fillText("⏸ PAUSED",canvas.width/2,canvas.height/2-20);
+ctx.fillStyle="#aaa";ctx.font="18px Arial";
+ctx.fillText("Press P or tap pause to resume",canvas.width/2,canvas.height/2+25);
 ctx.textAlign="left";
 }
 }
@@ -1389,37 +1847,41 @@ document.getElementById("startBtn").addEventListener("touchstart",e=>{e.preventD
 function startGame(){
 initAudio();
 document.getElementById("overlay").style.display="none";
-gameStarted=true;gameOver=false;
+gameStarted=true;gameOver=false;paused=false;
 player.x=150;player.y=ground();player.vx=0;player.vy=0;
 player.hp=100;player.maxHp=100;player.attack="";player.jumping=false;
-player.invincible=0;player.special=0;
+player.invincible=0;player.special=0;player.blocking=false;player.blockTimer=0;player.perfectBlock=0;
 score=0;combo=0;wave=1;waveTimer=0;
 dashTimer=0;dashCooldown=0;dashDir=0;boltCooldown=0;
 boltCharging=false;boltChargeTime=0;
 playerLevel=1;playerXP=0;xpToNext=50;bonusDmg=0;
 killStreak=0;killStreakTimer=0;gameTime=0;
+bestCombo=0;totalKills=0;wallJumpCooldown=0;
 cameraX=0;
 particles.length=0;floatingTexts.length=0;pickups.length=0;projectiles.length=0;
 playerBolts.length=0;severedHeads.length=0;corpses.length=0;raindrops.length=0;
 spawnWave(1);
+startMusic();
 }
 
 function restartGame(){
 if(!gameOver) return;
-gameOver=false;
+gameOver=false;paused=false;
 player.x=150;player.y=ground();player.vx=0;player.vy=0;
 player.hp=100;player.maxHp=100;player.attack="";player.jumping=false;
-player.invincible=0;player.special=0;
+player.invincible=0;player.special=0;player.blocking=false;player.blockTimer=0;player.perfectBlock=0;
 score=0;combo=0;wave=1;waveTimer=0;
 dashTimer=0;dashCooldown=0;dashDir=0;boltCooldown=0;
 boltCharging=false;boltChargeTime=0;
 playerLevel=1;playerXP=0;xpToNext=50;bonusDmg=0;
 killStreak=0;killStreakTimer=0;gameTime=0;
+bestCombo=0;totalKills=0;wallJumpCooldown=0;
 cameraX=0;
 particles.length=0;floatingTexts.length=0;pickups.length=0;projectiles.length=0;
 playerBolts.length=0;severedHeads.length=0;corpses.length=0;raindrops.length=0;
 document.getElementById("hiScore").textContent=highScore;
 spawnWave(1);
+startMusic();
 }
 
 // === CONTROLS ===
@@ -1472,7 +1934,7 @@ const dx=touch.clientX-cx;
 const tapDir=dx>10?1:dx<-10?-1:0;
 if(tapDir!==0){
 const now=Date.now();
-if(tapDir===lastTapDir&&now-lastTapTime<300&&dashCooldown<=0&&dashTimer<=0){
+if(tapDir===lastTapDir&&now-lastTapTime<300&&dashCooldown<=0&&dashTimer<=0&&hasAbility("dash")){
 dashDir=tapDir;dashTimer=12;dashCooldown=45;player.dir=tapDir;
 spawnParticles(player.x-cameraX,player.y+10,"#64c8ff",8);sfxDash();
 }
@@ -1518,6 +1980,7 @@ break;
 
 function doAttack(type){
 if(gameOver||!gameStarted) return;
+if(player.blocking) stopBlock();
 player.attack=type;player.attackTime=14;
 const dmg_bonus=bonusDmg;
 if(type==="punch"){hit(85,1+dmg_bonus);sfxPunch();}
@@ -1570,21 +2033,30 @@ sfxPunch();sfxKick();
 }
 
 document.getElementById("punch").addEventListener("touchstart",e=>{e.preventDefault();initAudio();
-if(player.jumping) doAttack("uppercut"); else doAttack("punch");});
+if(player.jumping&&hasAbility("uppercut")) doAttack("uppercut");
+else if(padDownHeld&&hasAbility("earthquake")) doEarthquake();
+else doAttack("punch");});
 document.getElementById("kick").addEventListener("touchstart",e=>{
 e.preventDefault();initAudio();
-if(player.jumping&&player.vy>0) doGroundPound();
-else if(player.jumping) doAttack("jumpkick");
-else if(padDownHeld) doAttack("spinkick");
+if(player.jumping&&player.vy>0&&hasAbility("groundpound")) doGroundPound();
+else if(player.jumping&&hasAbility("jumpkick")) doAttack("jumpkick");
+else if(padDownHeld&&hasAbility("spinkick")) doAttack("spinkick");
 else doAttack("kick");
 });
-document.getElementById("special").addEventListener("touchstart",e=>{e.preventDefault();initAudio();doSpecial();});
+document.getElementById("special").addEventListener("touchstart",e=>{e.preventDefault();initAudio();if(hasAbility("special"))doSpecial();});
+document.getElementById("pauseBtn").addEventListener("touchstart",e=>{e.preventDefault();togglePause();});
+
+// Block button: hold to block
+document.getElementById("blockBtn").addEventListener("touchstart",e=>{e.preventDefault();initAudio();startBlock();});
+document.getElementById("blockBtn").addEventListener("touchend",e=>{e.preventDefault();stopBlock();});
+document.getElementById("blockBtn").addEventListener("touchcancel",e=>{stopBlock();});
 
 // Bolt button: tap = normal bolt, hold = charged bolt
 let boltTouchId=null;
 let boltTouchStart=0;
 document.getElementById("bolt").addEventListener("touchstart",e=>{
 e.preventDefault();initAudio();
+if(!hasAbility("bolt")) return;
 boltTouchId=e.changedTouches[0].identifier;
 boltTouchStart=Date.now();
 boltCharging=true;
@@ -1596,7 +2068,8 @@ if(e.changedTouches[i].identifier===boltTouchId){
 boltCharging=false;
 const held=Date.now()-boltTouchStart;
 const charged=boltChargeTime>=40;
-shootBolt(charged);
+if(charged&&!hasAbility("chargedbolt")) shootBolt(false);
+else shootBolt(charged);
 boltChargeTime=0;
 boltTouchId=null;
 break;
@@ -1612,14 +2085,14 @@ document.addEventListener("keydown",e=>{
 if(keys[e.code]) return;
 keys[e.code]=true;initAudio();
 const now=Date.now();
-if((e.code==="ArrowLeft"||e.code==="KeyA")&&dashCooldown<=0&&dashTimer<=0){
+if((e.code==="ArrowLeft"||e.code==="KeyA")&&dashCooldown<=0&&dashTimer<=0&&hasAbility("dash")){
 if(now-lastKeyTapTime.left<280&&lastKeyTapDir==="left"){
 dashDir=-1;dashTimer=12;dashCooldown=45;player.dir=-1;
 spawnParticles(player.x-cameraX,player.y+10,"#64c8ff",8);sfxDash();
 }
 lastKeyTapTime.left=now;lastKeyTapDir="left";
 }
-if((e.code==="ArrowRight"||e.code==="KeyD")&&dashCooldown<=0&&dashTimer<=0){
+if((e.code==="ArrowRight"||e.code==="KeyD")&&dashCooldown<=0&&dashTimer<=0&&hasAbility("dash")){
 if(now-lastKeyTapTime.right<280&&lastKeyTapDir==="right"){
 dashDir=1;dashTimer=12;dashCooldown=45;player.dir=1;
 spawnParticles(player.x-cameraX,player.y+10,"#64c8ff",8);sfxDash();
@@ -1628,18 +2101,23 @@ lastKeyTapTime.right=now;lastKeyTapDir="right";
 }
 if(e.code==="Space"||e.code==="ArrowUp"||e.code==="KeyW"){
 e.preventDefault();
-if(!gameOver&&gameStarted&&!player.jumping){player.vy=-18;player.jumping=true;}
+if(!gameOver&&gameStarted&&!player.jumping){player.vy=-18;player.jumping=true;if(player.blocking)stopBlock();}
 }
 if(e.code==="KeyZ"||e.code==="KeyJ"){e.preventDefault();
-if(player.jumping) doAttack("uppercut"); else doAttack("punch");}
+if(player.jumping&&hasAbility("uppercut")) doAttack("uppercut");
+else if((keys["ArrowDown"]||keys["KeyS"])&&hasAbility("earthquake")) doEarthquake();
+else doAttack("punch");}
 if(e.code==="KeyX"||e.code==="KeyK"){e.preventDefault();
-if(player.jumping&&(keys["ArrowDown"]||keys["KeyS"])) doGroundPound();
-else if(player.jumping) doAttack("jumpkick");
-else if(keys["ArrowDown"]||keys["KeyS"]) doAttack("spinkick");
+if(player.jumping&&(keys["ArrowDown"]||keys["KeyS"])&&hasAbility("groundpound")) doGroundPound();
+else if(player.jumping&&hasAbility("jumpkick")) doAttack("jumpkick");
+else if((keys["ArrowDown"]||keys["KeyS"])&&hasAbility("spinkick")) doAttack("spinkick");
 else doAttack("kick");}
-if(e.code==="KeyC"||e.code==="KeyL"){e.preventDefault();doSpecial();}
-if(e.code==="KeyF"||e.code==="KeyI"){e.preventDefault();boltCharging=true;boltChargeTime=0;}
+if(e.code==="KeyC"||e.code==="KeyL"){e.preventDefault();if(hasAbility("special"))doSpecial();}
+if(e.code==="KeyF"||e.code==="KeyI"){e.preventDefault();if(hasAbility("bolt")){boltCharging=true;boltChargeTime=0;}}
+if(e.code==="ShiftLeft"||e.code==="ShiftRight"||e.code==="KeyQ"||e.code==="KeyB"){e.preventDefault();startBlock();}
 if(e.code==="KeyR"&&gameOver){restartGame();}
+if(e.code==="KeyP"){togglePause();}
+if(e.code==="KeyM"){toggleMusic();}
 if(e.code==="Enter"&&!gameStarted){startGame();}
 });
 document.addEventListener("keyup",e=>{
@@ -1647,8 +2125,12 @@ keys[e.code]=false;
 if((e.code==="KeyF"||e.code==="KeyI")&&boltCharging){
 boltCharging=false;
 const charged=boltChargeTime>=40;
-shootBolt(charged);
+if(charged&&!hasAbility("chargedbolt")) shootBolt(false);
+else shootBolt(charged);
 boltChargeTime=0;
+}
+if((e.code==="ShiftLeft"||e.code==="ShiftRight"||e.code==="KeyQ"||e.code==="KeyB")&&player.blocking){
+stopBlock();
 }
 });
 </script>
